@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.log
+
+# Task-delivery documents are local agent working notes.
+docs/SPEC.md
+docs/CHECKLIST.md
+docs/DEBUGLOG.md
+docs/CHECKLOG.md

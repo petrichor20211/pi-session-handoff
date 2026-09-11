@@ -1,0 +1,8 @@
+node_modules/
+coverage/
+test/
+docs/DEBUGLOG.md
+docs/CHECKLOG.md
+docs/SPEC.md
+docs/CHECKLIST.md
+*.log
