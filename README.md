@@ -82,7 +82,7 @@ The Agent tool writes a small local ticket, returns `terminate: true`, and dispa
 
 1. the active session is still the source session;
 2. no user message is pending;
-3. no context-bearing input was processed after the accepted handoff boundary;
+3. no new user messages or structural context changes appeared after the accepted handoff boundary; later custom messages (including monitor wake-ups), assistant replies, and tool results are ignored for Agent-authored handoffs, using the accepted note unchanged without carrying over that later work; `/handoff --write` retains strict context checks;
 4. the handoff call was the sole tool call in its assistant message.
 
 It then calls `newSession({ parentSession, setup, withSession })`. After replacement, only the fresh `withSession` context is used. The target receives a visible custom note with explicit Agent/user provenance and immediately starts its first response.

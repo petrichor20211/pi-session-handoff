@@ -21,7 +21,7 @@ The user controls the same capability either indirectly (`/handoff [focus]` asks
 8. A persisted local ticket exists before the tool reports acceptance.
 9. Direct-write handoff requires a source path that has already been flushed by an assistant turn.
 10. Session replacement only occurs from an extension command context after `waitForIdle()`.
-11. Source session identity, queued input, and context boundary are rechecked immediately before replacement.
+11. Source session identity, queued input, and context boundary are rechecked immediately before replacement. Agent-authored handoffs ignore later custom messages, assistant replies, and tool results, keeping the accepted note unchanged; new user messages and structural context changes still invalidate the boundary. Direct-write handoffs retain strict context checks.
 12. Objects bound to the source Pi runtime are never used after a successful replacement.
 13. The target note is a custom continuity message with explicit Agent/user provenance, not a user chat message or system instruction.
 14. A target path is saved before the continuation turn is triggered.
@@ -88,6 +88,7 @@ Successful delivery removes the ticket. Retained records preserve the note for c
 | Empty note or ticket write failure | Tool errors, does not terminate, source remains active. |
 | Mixed tool batch | Handoff errors; sibling work completes normally; Agent can retry handoff alone. |
 | Pending or newly processed user input | Ticket becomes invalidated; no session switch. |
+| Custom messages (including monitor wake-ups) and subsequent assistant/tool work after an Agent handoff | Ignore these entries during boundary validation; switch using the accepted note without refreshing or copying the later work. |
 | User changed active session | Ticket becomes invalidated; extension never switches the user back. |
 | `session_before_switch` cancels | Source remains active; ticket becomes cancelled. |
 | Target recorded, continuation run fails | Stay in target; retain ticket and do not create a second target. |

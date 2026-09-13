@@ -107,6 +107,14 @@ export function validateSourceBoundary(
 				matchingResultCount += 1;
 				continue;
 			}
+			// Keep the accepted snapshot even if extension messages trigger more Agent work.
+			if (
+				entry.type === "custom_message" ||
+				(entry.type === "message" &&
+					(entry.message.role === "assistant" || entry.message.role === "toolResult"))
+			) {
+				continue;
+			}
 			if (isContextBearing(entry)) {
 				return { valid: false, reason: "The source session received or processed new context after the handoff request." };
 			}
