@@ -27,6 +27,28 @@ The user controls the same capability either indirectly (`/handoff [focus]` asks
 14. A target path is saved before the continuation turn is triggered.
 15. Once a target is recorded, failures recover in that target and never create another target automatically.
 
+## Minimal recovery-note guidance
+
+The tool prompt and `/handoff [focus]` request share the user-supplied writing guidance:
+
+```text
+Write handoff.message as a concise, distilled recovery index. Include only information necessary to resume the work; Omit empty sections, repetition, and filler without sacrificing essential state.
+
+Use these headings in order:
+Objective:
+Completed with evidence:
+In progress:
+Next actions:
+Important files:
+Verification:
+Active processes:
+Active monitors:
+```
+
+No per-heading explanations, numerical length targets, repository-log policy, or extra writing paragraphs are appended to this shared guidance. Repository-specific rules remain in project instructions or server memory; the user's server-memory policy references `DEBUGLOG.md` and `CHECKLOG.md`.
+
+The tool's timing and sole-call rules remain separate and unchanged. User messages are still supplied by the existing archive builder without changes to collection, persistence, full-context injection, or compact/expanded rendering. No parser, mandatory checkpoint schema, hard cap, truncation, or extra summary call is added. Direct user-written notes remain unrestricted.
+
 ## Normal sequence
 
 ```text

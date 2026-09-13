@@ -44,15 +44,11 @@ handoff({ message: string })
 
 The call must be the only tool call in its assistant message. `message` must be non-empty, but the extension imposes no arbitrary byte budget. The Agent is prompted to keep this task-state portion concise.
 
-A useful task-state note normally includes:
+Both the `handoff` tool and `/handoff` request ask for a concise, distilled recovery index containing only information necessary to resume work. Omit empty sections, repetition, and filler without sacrificing essential state.
 
-- current objective and important user constraints;
-- established facts and completed changes;
-- verification still done or missing;
-- actual workspace/endpoint when relevant;
-- the first useful next step.
+Use these headings in order: **Objective**, **Completed with evidence**, **In progress**, **Next actions**, **Important files**, **Verification**, **Active processes**, and **Active monitors**. The prompt adds no per-heading explanations, numerical length target, or repository-log policy. Repository-specific rules belong in project instructions or server memory.
 
-This is guidance, not a required checkpoint schema. The Agent should not spend its note budget reproducing conversation history: the extension mechanically carries the exact text of every user message inherited from earlier handoffs and added on the active source branch, in chronological order. Image occurrences are preserved as attachment markers while their binary data remains in the source session.
+User messages remain a separate, plugin-generated verbatim archive. No schema or length limit is enforced, no extra summarizer call is made, and session-replacement behavior is unchanged.
 
 Inherited messages are stored as structured ranges into one verbatim archive, rather than by nesting the previous rendered handoff note. Repeated handoffs therefore add only newly received user text instead of recursively duplicating wrappers. Long messages are never truncated or summarized. In the TUI, the continuation card is compact by default: it shows the task state, archive size, and short previews; expanding the output reveals the complete text. The full archive still participates in the replacement Agent's context, so preserving a very long instruction necessarily consumes context—display collapsing does not pretend otherwise.
 

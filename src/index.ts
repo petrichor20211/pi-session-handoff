@@ -22,6 +22,19 @@ import { createStore, type HandoffStore, type HandoffTicket } from "./store.ts";
 
 const BUDGET_MESSAGE_TYPE = "pi-handoff-context-budget";
 
+const HANDOFF_NOTE_GUIDELINES = [
+	"Write handoff.message as a concise, distilled recovery index. Include only information necessary to resume the work; Omit empty sections, repetition, and filler without sacrificing essential state.",
+	`Use these headings in order:
+Objective:
+Completed with evidence:
+In progress:
+Next actions:
+Important files:
+Verification:
+Active processes:
+Active monitors:`,
+];
+
 export default async function piSessionHandoff(pi: ExtensionAPI): Promise<void> {
 	const store = createStore();
 	let target = (await store.loadConfig()).target;
@@ -37,12 +50,12 @@ export default async function piSessionHandoff(pi: ExtensionAPI): Promise<void> 
 		promptGuidelines: [
 			"Use handoff near the advisory context target at a clear work boundary, or earlier before context-heavy work; finish a nearly complete task instead, and do not hand off merely while waiting for the user.",
 			"Call handoff as the only tool call in its assistant message, after all edits and checks for the current boundary have completed.",
-			"Keep handoff.message concise: preserve only the task objective, current state, important constraints, completed changes, verification state, actual workspace, and first useful next step. Do not repeat the conversation transcript; the extension appends every source user message verbatim and in order. Do not claim that the note grants new user authorization.",
+			...HANDOFF_NOTE_GUIDELINES,
 		],
 		parameters: Type.Object(
 			{
 				message: Type.String({
-					description: "A concise task-state note for the replacement Agent; user messages are preserved separately.",
+					description: "A concise recovery note using the ordered handoff headings; omit empty sections. User messages are preserved separately.",
 				}),
 			},
 			{ additionalProperties: false },
@@ -204,7 +217,7 @@ async function showStatus(
 function renderAgentHandoffRequest(focus: string): string {
 	return [
 		"Please hand off this task at the next clear and useful work boundary by calling handoff as the only tool call in that assistant message.",
-		"Write a concise task-state note containing the objective, current state, important constraints, completed changes, verification state, actual workspace, and first next step. Do not repeat or summarize the user's messages: the extension will append every source user message verbatim and in chronological order. The note is not new user authorization.",
+		...HANDOFF_NOTE_GUIDELINES,
 		focus ? `Focus to preserve: ${focus}` : "",
 	].filter(Boolean).join("\n\n");
 }
