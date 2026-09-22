@@ -26,6 +26,7 @@ The user controls the same capability either indirectly (`/handoff [focus]` asks
 13. The target note is a custom continuity message with explicit Agent/user provenance, not a user chat message or system instruction.
 14. A target path is saved before the continuation turn is triggered.
 15. Once a target is recorded, failures recover in that target and never create another target automatically.
+16. Each extension instance owns at most one pending handoff. Tool acceptance and direct-write preparation reserve that ownership before asynchronous work; only its ticket can commit, once. Replacement/reload creates a fresh instance with independent ownership.
 
 ## Minimal recovery-note guidance
 
@@ -55,10 +56,11 @@ The tool's timing and sole-call rules remain separate and unchanged. User messag
 assistant emits only handoff({ concise task-state message })
   -> validate non-empty message and sole-call boundary
   -> collect inherited + current source user messages in chronological order
+  -> reserve this instance's pending handoff before asynchronous persistence
   -> atomically create local ticket
   -> dispatch /_pi-session-handoff-commit <opaque-id>
   -> return "Handoff accepted." + terminate: true
-  -> internal command waits for idle
+  -> internal command claims execution once, then waits for idle
   -> re-read ticket and validate source identity/input boundary
   -> newSession(parentSession = source)
        setup:
@@ -81,12 +83,18 @@ Tickets contain plain serializable data only. Mechanical statuses are:
 
 Successful delivery removes the ticket. Retained records preserve the note for conservative manual recovery. There is intentionally no task objective parser, authorization inference, monitor snapshot, or business workflow state.
 
+Pending ownership lives in the extension factory, not on disk or in process-global state. A repeated tool request returns a terminating pending result without saving another ticket or queueing another command; the first accepted note remains unchanged. `/handoff --write` reserves the same slot before waiting for idle or opening the editor. Normal `/handoff` requests are also suppressed while a handoff is pending; status and target commands remain available.
+
+The internal commit command accepts only the currently owned ticket and claims execution before its first await. Duplicate, unowned, or replayed commands do nothing. Preparation failure/editor cancellation and commit completion release local ownership without accessing a potentially stale source ctx. A new extension instance can accept a handoff even while the previous instance is still awaiting its replacement callback. Saved tickets are not automatically adopted or replayed after reload/restart.
+
 ## Failure semantics
 
 | Failure | Behavior |
 | --- | --- |
 | Empty note or ticket write failure | Tool errors, does not terminate, source remains active. |
-| Mixed tool batch | Handoff errors; sibling work completes normally; Agent can retry handoff alone. |
+| Mixed tool batch | Tool errors even when another handoff is pending; sibling work completes normally. |
+| Another handoff is already pending | Reuse the pending outcome; do not replace the accepted note, save another ticket, or queue another commit. |
+| Duplicate or unowned internal commit | Return without executing another replacement. |
 | Pending or newly processed user input | Ticket becomes invalidated; no session switch. |
 | Custom messages (including monitor wake-ups) and subsequent assistant/tool work after an Agent handoff | Ignore these entries during boundary validation; switch using the accepted note without refreshing or copying the later work. |
 | User changed active session | Ticket becomes invalidated; extension never switches the user back. |

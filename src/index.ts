@@ -11,6 +11,8 @@ import {
 	commitTicket,
 	createAgentTicket,
 	createUserTicket,
+	findSoleHandoffToolCall,
+	validateHandoffMessage,
 	HANDOFF_TOOL_NAME,
 	INTERNAL_COMMIT_COMMAND,
 	NOTE_MESSAGE_TYPE,
@@ -21,6 +23,12 @@ import { renderHandoffNote } from "./render.ts";
 import { createStore, type HandoffStore, type HandoffTicket } from "./store.ts";
 
 const BUDGET_MESSAGE_TYPE = "pi-handoff-context-budget";
+const PENDING_HANDOFF_MESSAGE = "A handoff is already pending for this session. The existing note will be used; no additional handoff was queued.";
+
+interface PendingHandoff {
+	ticketId?: string;
+	committing: boolean;
+}
 
 const HANDOFF_NOTE_GUIDELINES = [
 	"Write handoff.message as a concise, distilled recovery index. Include only information necessary to resume the work; Omit empty sections, repetition, and filler without sacrificing essential state.",
@@ -38,6 +46,22 @@ Active monitors:`,
 export default async function piSessionHandoff(pi: ExtensionAPI): Promise<void> {
 	const store = createStore();
 	let target = (await store.loadConfig()).target;
+	// Pi creates a new extension instance on replacement/reload. Keep ownership
+	// local so the next session can hand off while the old withSession is settling.
+	let pending: PendingHandoff | undefined;
+
+	async function commitPending(id: string, ctx: ExtensionCommandContext): Promise<void> {
+		const request = pending;
+		if (!request || request.ticketId !== id || request.committing) return;
+		// Claim before waitForIdle() or disk I/O can yield to another command.
+		request.committing = true;
+		try {
+			await commitTicket(id, ctx, store);
+		} finally {
+			// Only touch local state: ctx and pi may already belong to a replaced session.
+			if (pending === request) pending = undefined;
+		}
+	}
 
 	pi.registerMessageRenderer(NOTE_MESSAGE_TYPE, renderHandoffNote);
 
@@ -62,16 +86,33 @@ export default async function piSessionHandoff(pi: ExtensionAPI): Promise<void> 
 		),
 		executionMode: "sequential",
 		async execute(toolCallId, params, _signal, _onUpdate, ctx) {
-			const ticket = await createAgentTicket(params.message, toolCallId, ctx, store);
-			pi.sendUserMessage(`/${INTERNAL_COMMIT_COMMAND} ${ticket.id}`, {
-				deliverAs: "followUp",
-				expandPromptTemplates: true,
-			});
-			return {
-				content: [{ type: "text", text: "Handoff accepted." }],
-				details: { handoffId: ticket.id },
-				terminate: true,
-			};
+			validateHandoffMessage(params.message);
+			findSoleHandoffToolCall(ctx.sessionManager.getBranch(), toolCallId);
+			if (pending) {
+				return {
+					content: [{ type: "text", text: PENDING_HANDOFF_MESSAGE }],
+					details: { handoffId: pending.ticketId },
+					terminate: true,
+				};
+			}
+			const request: PendingHandoff = { committing: false };
+			pending = request;
+			try {
+				const ticket = await createAgentTicket(params.message, toolCallId, ctx, store);
+				request.ticketId = ticket.id;
+				pi.sendUserMessage(`/${INTERNAL_COMMIT_COMMAND} ${ticket.id}`, {
+					deliverAs: "followUp",
+					expandPromptTemplates: true,
+				});
+				return {
+					content: [{ type: "text", text: "Handoff accepted." }],
+					details: { handoffId: ticket.id },
+					terminate: true,
+				};
+			} catch (error) {
+				if (pending === request) pending = undefined;
+				throw error;
+			}
 		},
 	});
 
@@ -81,7 +122,7 @@ export default async function piSessionHandoff(pi: ExtensionAPI): Promise<void> 
 			const id = args.trim();
 			if (!id) return;
 			try {
-				await commitTicket(id, ctx, store);
+				await commitPending(id, ctx);
 			} catch (error) {
 				// The source command context may already be stale if replacement partly succeeded.
 				// Log locally rather than touching any session-bound object here.
@@ -119,8 +160,22 @@ export default async function piSessionHandoff(pi: ExtensionAPI): Promise<void> 
 				}
 				return;
 			}
+			if (pending) {
+				ctx.ui.notify(PENDING_HANDOFF_MESSAGE, "info");
+				return;
+			}
 			if (trimmed === "--write" || trimmed.startsWith("--write ")) {
-				await writeHandoff(trimmed.slice("--write".length).trim(), ctx, store);
+				const request: PendingHandoff = { committing: false };
+				pending = request;
+				try {
+					const ticket = await writeHandoff(trimmed.slice("--write".length).trim(), ctx, store);
+					if (ticket) {
+						request.ticketId = ticket.id;
+						await commitPending(ticket.id, ctx);
+					}
+				} finally {
+					if (pending === request) pending = undefined;
+				}
 				return;
 			}
 
@@ -162,7 +217,7 @@ async function writeHandoff(
 	prefill: string,
 	ctx: ExtensionCommandContext,
 	store: HandoffStore,
-): Promise<void> {
+): Promise<HandoffTicket | undefined> {
 	if (!ctx.hasUI) {
 		ctx.ui.notify("/handoff --write requires TUI or RPC extension UI support.", "error");
 		return;
@@ -187,14 +242,12 @@ async function writeHandoff(
 		return;
 	}
 
-	let ticket: HandoffTicket;
 	try {
-		ticket = await createUserTicket(message, ctx, store);
+		return await createUserTicket(message, ctx, store);
 	} catch (error) {
 		ctx.ui.notify(errorMessage(error), "error");
 		return;
 	}
-	await commitTicket(ticket.id, ctx, store);
 }
 
 async function showStatus(
